@@ -1,0 +1,19 @@
+POST http://localhost:3000/api/solicitudes
+Content-Type: application/json
+
+{
+  "estudiante_id": 1,
+  "materia_id": 1,
+  "tema_especifico": "Derivadas parciales",
+  "nivel_educativo": "pregrado",
+  "modalidad": "virtual",
+  "tipo": "inmediata",
+  "duracion_horas": 1,
+  "presupuesto_hora": 25000
+}
+
+### Obtener todas las solicitudes del estudiante con ID 1
+GET http://localhost:3000/api/solicitudes/estudiante/1
+
+### Ver las ofertas recibidas para la nueva solicitud con ID 4
+GET http://localhost:3000/api/solicitudes/4/ofertas

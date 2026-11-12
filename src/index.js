@@ -20,6 +20,7 @@ app.get('/', (req, res) => {
 
 // Registrar rutas de la API
 app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/solicitudes', require('./routes/solicitudes.routes'));
 
 // Arrancar servidor
 app.listen(PORT, () => {
