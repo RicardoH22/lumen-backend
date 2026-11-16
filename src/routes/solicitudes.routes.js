@@ -1,14 +1,65 @@
 const express = require('express');
 const router = express.Router();
+const pool = require('../db');
+const { verificarToken, verificarRol } = require('../middlewares/auth.middleware');
 
-// Importa tu conexión a la base de datos (ajusta la ruta si tu archivo db.js está en otra carpeta)
-const pool = require('../db'); 
-
-// POST: Crear una nueva solicitud de tutoría (Basada en el esquema de la BD)
-router.post('/', async (req, res) => {
+// GET: Listar todas las solicitudes activas (para los tutores autenticados)
+router.get('/', verificarToken, verificarRol('tutor'), async (req, res) => {
     try {
+        const query = `
+            SELECT s.*, m.nombre as materia_nombre 
+            FROM lumen.solicitudes s
+            LEFT JOIN lumen.materias m ON s.materia_id = m.id
+            WHERE s.estado = 'activa'
+            ORDER BY s.creada_en DESC;
+        `;
+        const { rows } = await pool.query(query);
+
+        res.status(200).json({
+            ok: true,
+            total: rows.length,
+            solicitudes: rows
+        });
+    } catch (error) {
+        console.error('Error al consultar solicitudes activas:', error);
+        res.status(500).json({
+            ok: false,
+            mensaje: 'Error interno del servidor al consultar solicitudes activas'
+        });
+    }
+});
+
+// GET: Obtener las solicitudes creadas por el estudiante autenticado
+router.get('/mis-solicitudes', verificarToken, verificarRol('estudiante'), async (req, res) => {
+    const estudiante_id = req.usuario.id; // Extraído del JWT
+    try {
+        const query = `
+            SELECT * FROM lumen.solicitudes 
+            WHERE estudiante_id = $1 
+            ORDER BY creada_en DESC;
+        `;
+        const { rows } = await pool.query(query, [estudiante_id]);
+        
+        res.status(200).json({
+            ok: true,
+            total: rows.length,
+            solicitudes: rows
+        });
+    } catch (error) {
+        console.error('Error al obtener las solicitudes:', error);
+        res.status(500).json({
+            ok: false,
+            mensaje: 'Error interno del servidor al obtener las solicitudes'
+        });
+    }
+});
+
+// POST: Crear una nueva solicitud de tutoría (Estudiante autenticado)
+router.post('/', verificarToken, verificarRol('estudiante'), async (req, res) => {
+    try {
+        const estudiante_id = req.usuario.id; // Extraído de forma segura del JWT
+
         const { 
-            estudiante_id, 
             materia_id, 
             tema_especifico, 
             nivel_educativo, 
@@ -20,15 +71,14 @@ router.post('/', async (req, res) => {
             ciudad 
         } = req.body;
 
-        // Validamos los campos obligatorios según el esquema de la BD
-        if (!estudiante_id || !materia_id || !nivel_educativo || !modalidad || !duracion_horas) {
+        // Validamos los campos obligatorios
+        if (!materia_id || !nivel_educativo || !modalidad || !duracion_horas) {
             return res.status(400).json({ 
                 ok: false, 
-                mensaje: 'Faltan campos obligatorios (estudiante_id, materia_id, nivel_educativo, modalidad, duracion_horas).' 
+                mensaje: 'Faltan campos obligatorios (materia_id, nivel_educativo, modalidad, duracion_horas).' 
             });
         }
 
-        // Consulta SQL para insertar en la tabla 'solicitudes'
         const query = `
             INSERT INTO lumen.solicitudes (
                 estudiante_id, materia_id, tema_especifico, nivel_educativo, 
@@ -51,7 +101,6 @@ router.post('/', async (req, res) => {
             ciudad || null
         ];
 
-        // Ejecutamos la consulta en PostgreSQL (Neon)
         const nuevaSolicitud = await pool.query(query, values);
 
         res.status(201).json({
@@ -66,38 +115,26 @@ router.post('/', async (req, res) => {
     }
 });
 
-// RUTA: Obtener las solicitudes de un estudiante
-
-router.get('/estudiante/:id', async (req, res) => {
+// GET: Ver las ofertas recibidas para una solicitud específica (Estudiante autenticado)
+router.get('/:id/ofertas', verificarToken, verificarRol('estudiante'), async (req, res) => {
     const { id } = req.params;
-    try {
-        const query = `
-            SELECT * FROM lumen.solicitudes 
-            WHERE estudiante_id = $1 
-            ORDER BY creada_en DESC;
-        `;
-        const { rows } = await pool.query(query, [id]);
-        
-        res.status(200).json({
-            ok: true,
-            total: rows.length,
-            solicitudes: rows
-        });
-    } catch (error) {
-        console.error('Error al obtener las solicitudes:', error);
-        res.status(500).json({
-            ok: false,
-            mensaje: 'Error interno del servidor al obtener las solicitudes'
-        });
-    }
-});
+    const estudiante_id = req.usuario.id;
 
-// RUTA: Ver las ofertas recibidas para una solicitud específica
-
-router.get('/:id/ofertas', async (req, res) => {
-    const { id } = req.params; // id de la solicitud
     try {
-        
+        // Validar que la solicitud pertenezca al estudiante logueado
+        const solCheck = await pool.query(
+            'SELECT estudiante_id FROM lumen.solicitudes WHERE id = $1',
+            [id]
+        );
+
+        if (solCheck.rows.length === 0) {
+            return res.status(404).json({ ok: false, mensaje: 'La solicitud no existe' });
+        }
+
+        if (solCheck.rows[0].estudiante_id !== estudiante_id) {
+            return res.status(403).json({ ok: false, mensaje: 'No tienes permiso para ver las ofertas de esta solicitud' });
+        }
+
         const query = `
             SELECT o.*, t.tarifa_hora as tarifa_tutor 
             FROM lumen.ofertas o

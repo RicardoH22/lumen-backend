@@ -1,19 +1,63 @@
-POST http://localhost:3000/api/solicitudes
+
+
+### VARIABLES DE AUTENTICACIÓN
+@token_estudiante = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIxIiwiY29ycmVvIjoiYWxiZXJ0b190ZXN0QGNvcnJlby5jb20iLCJyb2wiOiJlc3R1ZGlhbnRlIiwiaWF0IjoxNzk0ODYwMzI0LCJleHAiOjE3OTQ4ODkxMjR9.gO05cZIYS2YQpKE2IVAhiLYRTp5CdTIitQUoY8wGtiM
+@token_tutor = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIyIiwiY29ycmVvIjoic2FudGlhZ29fdHV0b3JAY29ycmVvLmNvbSIsInJvbCI6InR1dG9yIiwiaWF0IjoxNzk0ODYwNDA2LCJleHAiOjE3OTQ4ODkyMDZ9.L3Tusjhoa_jGkgqoNj5O-2PQ0L_HJbEJ-Z2U-nyBKHc
+
+
+### CONSULTAR TUTORÍAS
+GET http://localhost:3000/api/tutorias/mis-tutorias
+Authorization: Bearer {{token_estudiante}}
+
+### 1. LOGIN ESTUDIANTE
+POST http://localhost:3000/api/auth/login
 Content-Type: application/json
 
 {
-  "estudiante_id": 1,
-  "materia_id": 1,
-  "tema_especifico": "Derivadas parciales",
-  "nivel_educativo": "pregrado",
+  "correo": "alberto_test@correo.com",
+  "password": "12345678"
+}
+### 2. CREAR SOLICITUD DE TUTORÍA
+POST http://localhost:3000/api/solicitudes
+Authorization: Bearer {{token_estudiante}}
+Content-Type: application/json
+
+{
+  "materia": "Redes de Computadores",
+  "tema_especifico": "Subnetting VLSM",
   "modalidad": "virtual",
-  "tipo": "inmediata",
-  "duracion_horas": 1,
-  "presupuesto_hora": 25000
+  "duracion_horas": 2
 }
 
-### Obtener todas las solicitudes del estudiante con ID 1
-GET http://localhost:3000/api/solicitudes/estudiante/1
+### 3. CREAR TUTORÍA CONFIRMADA
+POST http://localhost:3000/api/tutorias
+Authorization: Bearer {{token_estudiante}}
+Content-Type: application/json
 
-### Ver las ofertas recibidas para la nueva solicitud con ID 4
-GET http://localhost:3000/api/solicitudes/4/ofertas
+{
+  "solicitud_id": 11,
+  "oferta_id": 19,
+  "tutor_id": 22
+}
+
+### 4. CONSULTAR MIS TUTORÍAS
+GET http://localhost:3000/api/tutorias/mis-tutorias
+Authorization: Bearer {{token_estudiante}}
+
+### 5. ASIGNAR ENLACE DE SALA (TUTOR)
+PATCH http://localhost:3000/api/tutorias/9/enlace
+Authorization: Bearer {{token_tutor}}
+Content-Type: application/json
+
+{
+  "enlace_sala": "https://meet.google.com/lumen-tutoria-9"
+}
+
+### 6. FINALIZAR TUTORÍA
+PATCH http://localhost:3000/api/tutorias/9/estado
+Authorization: Bearer {{token_estudiante}}
+Content-Type: application/json
+
+{
+  "estado": "finalizada"
+}
