@@ -3,6 +3,8 @@ const router = express.Router();
 const pool = require('../db');
 const { verificarToken, verificarRol } = require('../middlewares/auth.middleware');
 
+const nivelesEducativos = new Set(['colegio', 'pregrado', 'posgrado']);
+
 // GET: Listar todas las solicitudes activas (para los tutores autenticados)
 router.get('/', verificarToken, verificarRol('tutor'), async (req, res) => {
     try {
@@ -71,7 +73,7 @@ router.post('/', verificarToken, verificarRol('estudiante'), async (req, res) =>
             duracion_horas, 
             presupuesto_hora, 
             ciudad 
-        } = req.body;
+        } = req.body || {};
 
         // Validamos los campos obligatorios
         if (!materia_id || !nivel_educativo || !modalidad || !duracion_horas) {
@@ -82,6 +84,17 @@ router.post('/', verificarToken, verificarRol('estudiante'), async (req, res) =>
         }
         if (!/^[1-9]\d*$/.test(String(materia_id))) {
             return res.status(400).json({ ok: false, mensaje: 'El ID de materia no es válido.' });
+        }
+
+        // Los clientes anteriores enviaban "bachillerato" para el nivel "colegio".
+        const nivel = nivel_educativo === 'bachillerato' ? 'colegio' : nivel_educativo;
+        if (!nivelesEducativos.has(nivel)) {
+            return res.status(400).json({ ok: false, mensaje: 'El nivel educativo debe ser colegio, pregrado o posgrado.' });
+        }
+
+        const ciudadSolicitud = typeof ciudad === 'string' ? ciudad.trim() : '';
+        if (modalidad === 'presencial' && !ciudadSolicitud) {
+            return res.status(400).json({ ok: false, mensaje: 'Indica la ciudad para la tutoría presencial.' });
         }
 
         const query = `
@@ -99,13 +112,13 @@ router.post('/', verificarToken, verificarRol('estudiante'), async (req, res) =>
             estudiante_id, 
             materia_id, 
             tema_especifico || null, 
-            nivel_educativo, 
+            nivel,
             modalidad, 
             tipo || 'inmediata', 
             fecha_programada || null, 
             duracion_horas, 
             presupuesto_hora || 0, 
-            ciudad || null
+            ciudadSolicitud || null
         ];
 
         const nuevaSolicitud = await pool.query(query, values);
