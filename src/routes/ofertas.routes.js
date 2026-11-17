@@ -121,17 +121,21 @@ router.patch('/:id/aceptar', verificarToken, verificarRol('estudiante'), async (
     const { id } = req.params;
     const estudiante_id = req.usuario.id;
 
-    const client = await pool.connect();
+    let client;
 
     try {
+        client = await pool.connect();
         await client.query('BEGIN');
 
-        // 1. Obtener oferta y validar propiedad de la solicitud
+        // Bloquea la solicitud para que solo una oferta pueda dar lugar a una tutoría.
         const ofertaRes = await client.query(
-            `SELECT o.*, s.estudiante_id 
+            `SELECT o.id, o.solicitud_id, o.tutor_id, o.precio_hora, o.estado,
+                    s.estudiante_id, s.estado AS estado_solicitud,
+                    s.fecha_programada, s.duracion_horas, s.modalidad
              FROM lumen.ofertas o
              JOIN lumen.solicitudes s ON o.solicitud_id = s.id
-             WHERE o.id = $1`,
+             WHERE o.id = $1
+             FOR UPDATE OF s`,
             [id]
         );
 
@@ -150,33 +154,49 @@ router.patch('/:id/aceptar', verificarToken, verificarRol('estudiante'), async (
             });
         }
 
-        // 2. Marcar oferta como aceptada
+        if (oferta.estado_solicitud === 'asignada') {
+            const { rows } = await client.query(
+                'SELECT * FROM lumen.tutorias WHERE solicitud_id = $1 AND oferta_id = $2',
+                [oferta.solicitud_id, oferta.id]
+            );
+            await client.query('ROLLBACK');
+            if (rows.length > 0) {
+                return res.json({ ok: true, mensaje: 'La oferta ya fue aceptada.', tutoria: rows[0] });
+            }
+            return res.status(409).json({ ok: false, mensaje: 'La solicitud ya tiene una tutoría asignada.' });
+        }
+
+        if (oferta.estado_solicitud !== 'activa' || oferta.estado !== 'pendiente') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ ok: false, mensaje: 'Esta oferta ya no está disponible.' });
+        }
+
         await client.query(
             `UPDATE lumen.ofertas SET estado = 'aceptada' WHERE id = $1`,
             [id]
         );
 
-        // 3. Actualizar la solicitud a 'asignada'
         await client.query(
             `UPDATE lumen.solicitudes SET estado = 'asignada' WHERE id = $1`,
             [oferta.solicitud_id]
         );
 
-        // 4. Registrar formalmente la tutoría en lumen.tutorias
         const tutoriaRes = await client.query(
-            `INSERT INTO lumen.tutorias (solicitud_id, oferta_id, estudiante_id, tutor_id, estado)
-             VALUES ($1, $2, $3, $4, 'confirmada', NOW(), $5, $6)
+            `INSERT INTO lumen.tutorias
+                (solicitud_id, oferta_id, estudiante_id, tutor_id, estado, fecha_inicio, duracion_horas, precio_hora, modalidad)
+             VALUES ($1, $2, $3, $4, 'confirmada', COALESCE($5::timestamp, NOW()), $6, $7, $8)
              RETURNING *`,
             [
-        oferta.solicitud_id, 
-        oferta.id, 
-        estudiante_id, 
-        oferta.tutor_id, 
-        oferta.duracion_horas || 1, 
-        oferta.precio_hora, 
-        oferta.modalidad || 'virtual'
-    ]
-);
+                oferta.solicitud_id,
+                oferta.id,
+                estudiante_id,
+                oferta.tutor_id,
+                oferta.fecha_programada,
+                oferta.duracion_horas,
+                oferta.precio_hora,
+                oferta.modalidad
+            ]
+        );
 
         await client.query('COMMIT');
 
@@ -187,14 +207,16 @@ router.patch('/:id/aceptar', verificarToken, verificarRol('estudiante'), async (
         });
 
     } catch (error) {
-        await client.query('ROLLBACK');
+        await client?.query('ROLLBACK').catch((rollbackError) => {
+            console.error('Error al revertir la aceptación de oferta:', rollbackError);
+        });
         console.error('Error al aceptar oferta:', error);
         res.status(500).json({
             ok: false,
-            mensaje: error.message || 'Error interno al procesar la aceptación'
+            mensaje: 'Error interno al procesar la aceptación'
         });
     } finally {
-        client.release();
+        client?.release();
     }
 });
 

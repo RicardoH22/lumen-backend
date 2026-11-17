@@ -34,9 +34,11 @@ router.get('/mis-solicitudes', verificarToken, verificarRol('estudiante'), async
     const estudiante_id = req.usuario.id; // Extraído del JWT
     try {
         const query = `
-            SELECT * FROM lumen.solicitudes 
-            WHERE estudiante_id = $1 
-            ORDER BY creada_en DESC;
+            SELECT s.*, m.nombre AS materia_nombre
+            FROM lumen.solicitudes s
+            LEFT JOIN lumen.materias m ON s.materia_id = m.id
+            WHERE s.estudiante_id = $1
+            ORDER BY s.creada_en DESC;
         `;
         const { rows } = await pool.query(query, [estudiante_id]);
         
@@ -78,13 +80,18 @@ router.post('/', verificarToken, verificarRol('estudiante'), async (req, res) =>
                 mensaje: 'Faltan campos obligatorios (materia_id, nivel_educativo, modalidad, duracion_horas).' 
             });
         }
+        if (!/^[1-9]\d*$/.test(String(materia_id))) {
+            return res.status(400).json({ ok: false, mensaje: 'El ID de materia no es válido.' });
+        }
 
         const query = `
             INSERT INTO lumen.solicitudes (
                 estudiante_id, materia_id, tema_especifico, nivel_educativo, 
                 modalidad, tipo, fecha_programada, duracion_horas, presupuesto_hora, ciudad, estado
             ) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'activa') 
+            SELECT $1, m.id, $3, $4, $5, $6, $7, $8, $9, $10, 'activa'
+            FROM lumen.materias m
+            WHERE m.id = $2
             RETURNING *;
         `;
         
@@ -102,6 +109,9 @@ router.post('/', verificarToken, verificarRol('estudiante'), async (req, res) =>
         ];
 
         const nuevaSolicitud = await pool.query(query, values);
+        if (nuevaSolicitud.rows.length === 0) {
+            return res.status(400).json({ ok: false, mensaje: 'La materia seleccionada no existe.' });
+        }
 
         res.status(201).json({
             ok: true,
@@ -131,14 +141,16 @@ router.get('/:id/ofertas', verificarToken, verificarRol('estudiante'), async (re
             return res.status(404).json({ ok: false, mensaje: 'La solicitud no existe' });
         }
 
-        if (solCheck.rows[0].estudiante_id !== estudiante_id) {
+        if (String(solCheck.rows[0].estudiante_id) !== String(estudiante_id)) {
             return res.status(403).json({ ok: false, mensaje: 'No tienes permiso para ver las ofertas de esta solicitud' });
         }
 
         const query = `
-            SELECT o.*, t.tarifa_hora as tarifa_tutor 
+            SELECT o.*, u.nombre AS nombre_tutor, u.apellido AS apellido_tutor,
+                   to_jsonb(p)->>'tarifa_hora_base' AS tarifa_tutor
             FROM lumen.ofertas o
-            LEFT JOIN lumen.tutores t ON o.tutor_id = t.id
+            LEFT JOIN lumen.usuarios u ON o.tutor_id = u.id
+            LEFT JOIN lumen.perfiles_tutor p ON o.tutor_id = p.usuario_id
             WHERE o.solicitud_id = $1
             ORDER BY o.creada_en DESC;
         `;

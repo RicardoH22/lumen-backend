@@ -14,6 +14,7 @@ const solicitudesRoutes = require('./routes/solicitudes.routes');
 const ofertasRoutes = require('./routes/ofertas.routes');
 const tutoriasRoutes = require('./routes/tutorias.routes');
 const mapRoutes = require('./routes/map.routes');
+const materiasRoutes = require('./routes/materias.routes');
 
 // 3. Montaje de rutas
 app.use('/api/auth', authRoutes);
@@ -21,6 +22,7 @@ app.use('/api/solicitudes', solicitudesRoutes);
 app.use('/api/ofertas', ofertasRoutes);
 app.use('/api/tutorias', tutoriasRoutes);
 app.use('/api/mapas', mapRoutes);
+app.use('/api/materias', materiasRoutes);
 
 const PORT = process.env.PORT || 3000;
 
@@ -29,15 +31,6 @@ app.get('/', (req, res) => {
   res.json({ mensaje: 'API de LUMEN funcionando correctamente 🚀' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
-// Registrar rutas de la API
-app.use('/api/auth', require('./routes/auth.routes'));
-app.use('/api/solicitudes', require('./routes/solicitudes.routes'));
-
-
-// Arrancar servidor
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
